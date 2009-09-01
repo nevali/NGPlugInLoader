@@ -25,10 +25,17 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef NGPLUGINLOADER_NGPLUGINLOADER_H_
+#ifndef NGPLUGINLOADER_NGPLUGINLOADER_H_
 # define NGPLUGINLOADER_NGPLUGINLOADER_H_ 1
 
 #import <Foundation/Foundation.h>
+
+# ifdef NGPLUGINLOADER_INTERNAL_
+#  define NGPLUGINLOADER_CONST_EXTERN_ATTRIBUTE_
+# else
+#  define NGPLUGINLOADER_CONST_EXTERN_ATTRIBUTE_ __attribute__((weak_import))
+# endif
+
 
 # if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_5
 
@@ -90,6 +97,6 @@
 
 @end
 
-extern NSString *NGPlugInLoaderPlugInDidLoadNotification;
+extern NSString *const NGPlugInLoaderPlugInDidLoadNotification NGPLUGINLOADER_CONST_EXTERN_ATTRIBUTE_;
 
 #endif /*!NGPLUGINLOADER_NGPLUGINLOADER_H_*/

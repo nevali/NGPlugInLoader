@@ -31,11 +31,16 @@
 
 #import "NGPlugInLoader.h"
 
+NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugInLoader.notifications.PlugInDidLoad";
+
 @interface NGPlugInLoader(NGPlugInLoaderInternalMethods)
 - (NSArray *)aggregatePaths;
 - (NSArray *)defaultSearchPaths;
 - (NSString *)nameOfBundle:(NSBundle *)bundle useOnlyCFBundleName:(BOOL)flag;
-- (BOOL)loadPlugInsAtPath:(NSString *)folderPath;
+- (unsigned int)loadPlugInsAtPath:(NSString *)folderPath;
+- (BOOL)attemptToLoadPlugInAtPath:(NSString *)bundlePath;
+- (BOOL)plugInShouldLoad:(NSBundle *)bundle;
+- (void)plugInDidLoad:(NSBundle *)bundle;
 @end
 
 @implementation NGPlugInLoader
@@ -201,7 +206,17 @@
 
 - (unsigned int)loadPlugIns
 {
-	return 0;
+	NSString *path;
+	NSEnumerator *en;
+	unsigned int loaded;
+
+	loaded = 0;
+	en = [[self searchPaths] objectEnumerator];
+	while((path = [en nextObject]))
+	{
+		loaded += [self loadPlugInsAtPath:path];
+	}
+	return loaded;
 }
 
 # if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_5 
@@ -267,25 +282,29 @@
 	return paths;
 }
 
-- (BOOL)loadPlugInsAtPath:(NSString *)folderPath
+- (unsigned int)loadPlugInsAtPath:(NSString *)folderPath
 {
 	NSDirectoryEnumerator *en;
 	NSString *p;
+	unsigned int loaded;
 	
 	NSLog(@"Loading plug-ins from path: %@", folderPath);
+	loaded = 0;
 	if(!(en = [[NSFileManager defaultManager] enumeratorAtPath:folderPath]))
 	{
-		return NO;
+		return 0;
 	}
 	while(p = [en nextObject])
 	{
 		if([[p pathExtension] isEqualToString:bundleExtension])
 		{
-/* 			[self loadDriverFromBundle:[folderPath stringByAppendingPathComponent:p]]; */
-			NSLog(@"Loading plug-ins from path: %@", folderPath);
+			if([self attemptToLoadPlugInAtPath:[folderPath stringByAppendingPathComponent:p]])
+			{
+				loaded++;
+			}
 		}
 	}
-	return YES;
+	return loaded;
 }
 
 - (NSString *)nameOfBundle:(NSBundle *)bundle useOnlyCFBundleName:(BOOL)flag
@@ -300,6 +319,47 @@
 		}
 	}
 	return name;
+}
+
+- (BOOL)attemptToLoadPlugInAtPath:(NSString *)bundlePath
+{
+	NSBundle *bundle;
+	
+	if(!(bundle = [NSBundle bundleWithPath:bundlePath]))
+	{
+		return NO;
+	}
+	if(!([self plugInShouldLoad:bundle]))
+	{
+		return NO;
+	}
+	if([bundle load])
+	{
+		[self plugInDidLoad:bundle];
+		return YES;
+	}
+	return NO;
+}
+
+- (BOOL)plugInShouldLoad:(NSBundle *)bundle
+{
+	if(delegate && [delegate respondsToSelector:@selector(plugInShouldLoad:)])
+	{
+		return [delegate plugInShouldLoad:bundle];
+	}
+	return YES;
+}
+
+- (void)plugInDidLoad:(NSBundle *)bundle
+{
+	NSNotification *notification;
+	
+	notification = [NSNotification notificationWithName:NGPlugInLoaderPlugInDidLoadNotification object:bundle];
+	if(delegate && [delegate respondsToSelector:@selector(plugInDidLoad:)])
+	{
+		[delegate plugInDidLoad:notification];
+	}
+	[[NSNotificationCenter defaultCenter] postNotification:notification];
 }
 
 @end
