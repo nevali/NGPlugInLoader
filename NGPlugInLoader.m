@@ -31,16 +31,41 @@
 
 #import "NGPlugInLoader.h"
 
+/* Plug-in directories are split into several (ordered) groups:
+ *
+ * 1. Explicitly-specified bundle-relative paths
+ * 2. The main bundle path
+ * 3. Per-domain paths
+ * 4. Any other explicit paths
+ *
+ * By default:
+ * - the bundle-relative ("local") paths are empty.
+ * - the main bundle path is initialised to [[NSBundle mainBundle] builtInPlugInsPath]
+ * - per-domain paths are _lazily_ initialised to Library/Application Support/{appliationName}
+ * - Other ("extra") paths are empty.
+ * - applicationName is initialised to the CFBundleName key from the main
+ *   bundle's Info.plist.
+ *
+ * The lazy initialisation of the per-domain paths means that if no call to
+ * searchPath, loadPlugIns, or one of the addPath:withinDirectory:... methods is
+ * setApplicationName: can be called to set the path, relative to NSApplicationSupportDirectory,
+ * which -will- be used when one of these methods is invoked.
+ *
+ * If one of these methods has been invoked, resetDomainPaths may be called
+ * to reset the per-domain path list to defaults. Note that calling
+ * resetDomainPaths will (perhaps obviously) remove any paths which have
+ * been added to the list.
+ */
+
 NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugInLoader.notifications.PlugInDidLoad";
 
 @interface NGPlugInLoader(NGPlugInLoaderInternalMethods)
-- (NSArray *)aggregatePaths;
-- (NSArray *)defaultSearchPaths;
 - (NSString *)nameOfBundle:(NSBundle *)bundle useOnlyCFBundleName:(BOOL)flag;
 - (unsigned int)loadPlugInsAtPath:(NSString *)folderPath;
 - (BOOL)attemptToLoadPlugInAtPath:(NSString *)bundlePath;
 - (BOOL)plugInShouldLoad:(NSBundle *)bundle;
 - (void)plugInDidLoad:(NSBundle *)bundle;
+- (BOOL)initialisePerDomainPaths;
 @end
 
 @implementation NGPlugInLoader
@@ -65,20 +90,11 @@ NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugI
 	if((self = [super init]))
 	{
 		bundleExtension = [extension retain];
-		searchPaths = nil;
-		frameworkIdentifier = nil;
-		if((applicationName = [self nameOfBundle:[NSBundle mainBundle] useOnlyCFBundleName:YES]))
-		{
-			appPlugInsFolderPath = [[NSString alloc] initWithFormat:@"Application Support/%@/PlugIns", applicationName];
-		}
-		else
-		{
-			appPlugInsFolderPath = nil;
-		}
-		appBundlePlugInsPath = [[[NSBundle mainBundle] builtInPlugInsPath] retain];
-		frameworkPlugInsFolderPath = nil;
-		frameworkBundlePlugInsPath = nil;
-		useDefaultSearchPaths = YES;
+		localPaths = [[NSMutableArray alloc] init];
+		perDomainPaths = nil;
+		extraPaths = [[NSMutableArray alloc] init];
+		applicationName = [self nameOfBundle:[NSBundle mainBundle] useOnlyCFBundleName:YES];
+		mainBundlePlugInsPath = [[[NSBundle mainBundle] builtInPlugInsPath] retain];
 	}
 	return self;
 }
@@ -86,123 +102,55 @@ NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugI
 - (void) release
 {
 	[bundleExtension release];
-	[appPlugInsFolderPath release];
-	[frameworkPlugInsFolderPath release];
-	[appBundlePlugInsPath release];
-	[frameworkBundlePlugInsPath release];
-	[searchPaths release];
-	[defaultSearchPaths release];
+	bundleExtension = nil;
 	[applicationName release];
-	[frameworkIdentifier release];
+	applicationName = nil;
+	[localPaths release];
+	localPaths = nil;
+	[perDomainPaths release];
+	perDomainPaths = nil;
+	[extraPaths release];
+	extraPaths = nil;
+	[mainBundlePlugInsPath release];
+	mainBundlePlugInsPath = nil;
 	[super release];
 }
 
-- (NSArray *)searchPaths
+- (NSArray *)searchPath
 {
-	if(useDefaultSearchPaths)
+	NSMutableArray *array;
+	
+	array = [NSMutableArray array];
+	if(localPaths)
 	{
-		if(!defaultSearchPaths)
-		{
-			defaultSearchPaths = [[self defaultSearchPaths] retain];
-		}
-		if(searchPaths)
-		{
-			return [self aggregatePaths];
-		}
-		return defaultSearchPaths;
+		[array addObjectsFromArray:localPaths];
 	}
-	if(searchPaths)
+	if(mainBundlePlugInsPath)
 	{
-		return searchPaths;
+		[array addObject:mainBundlePlugInsPath];
 	}
-	return [NSArray array];
-}
-
-- (void)addSearchPath:(NSString *)path
-{
-	if(!searchPaths)
+	if([self initialisePerDomainPaths])
 	{
-		searchPaths = [[NSMutableArray alloc] init];
+		[array addObjectsFromArray:perDomainPaths];
 	}
-	[(NSMutableArray *)searchPaths addObject:path];
-}
-
-- (void)setSearchPaths:(NSArray *)paths
-{
-	[self setSearchPaths:paths replacingDefaults:NO];
-}
-
-- (void)setSearchPaths:(NSArray *)paths replacingDefaults:(BOOL)replace
-{
-	[searchPaths release];
-	if(replace)
+	if(extraPaths)
 	{
-		[defaultSearchPaths release];
-		defaultSearchPaths = nil;
-		useDefaultSearchPaths = NO;
+		[array addObjectsFromArray:extraPaths];
 	}
-	else
-	{
-		useDefaultSearchPaths = YES;
-	}
-	if(paths)
-	{
-		searchPaths = [[NSMutableArray alloc] initWithArray:paths];
-	}
-	else
-	{
-		searchPaths = nil;
-	}
+	return array;
 }
 
 - (void)setApplicationName:(NSString *)appName
 {
-	if((applicationName && appName && NSOrderedSame == [applicationName compare:appName]) ||
-		(!applicationName && !appName))
-	{
-		return;
-	}
 	[applicationName release];
-	[appPlugInsFolderPath release];
-	if((applicationName = [appName retain]))
-	{
-		appPlugInsFolderPath = [[NSString alloc] initWithFormat:@"Application Support/%@/PlugIns", applicationName];
-	}
-	else
-	{
-		appPlugInsFolderPath = nil;
-	}
-   [defaultSearchPaths release];
-   defaultSearchPaths = nil;
+	applicationName = [appName retain];
 }
 
-- (void)setFrameworkWithIdentifier:(NSString *)identifier
+- (void)setMainBundlePlugInsPath:(NSString *)path
 {
-	[self setFrameworkWithBundle:[NSBundle bundleWithIdentifier:identifier]];
+	[mainBundlePlugInsPath release];
+	mainBundlePlugInsPath = [path retain];
 }
-
-- (void)setFrameworkWithBundle:(NSBundle *)bundle
-{
-	NSString *path;
-	
-	if(bundle)
-	{
-		path = [bundle builtInPlugInsPath];
-	}
-	else
-	{
-		path = nil;
-	}
-	if((frameworkBundlePlugInsPath && path && NSOrderedSame == [frameworkBundlePlugInsPath compare:path]) ||
-	   (!frameworkBundlePlugInsPath && !path))
-	{
-		return;
-	}
-	[frameworkBundlePlugInsPath release];
-	frameworkBundlePlugInsPath = [path retain];
-	[defaultSearchPaths release];
-	defaultSearchPaths = nil;
-}	
 
 - (unsigned int)loadPlugIns
 {
@@ -211,12 +159,101 @@ NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugI
 	unsigned int loaded;
 
 	loaded = 0;
-	en = [[self searchPaths] objectEnumerator];
+	en = [[self searchPath] objectEnumerator];
 	while((path = [en nextObject]))
 	{
 		loaded += [self loadPlugInsAtPath:path];
 	}
 	return loaded;
+}
+
+- (void)resetDomainPaths
+{
+	[perDomainPaths release];
+	perDomainPaths = nil;
+}
+
+- (BOOL)addPath:(NSString *)relativePath withinDirectory:(NSSearchPathDirectory)dir
+{
+	return [self addPath:relativePath withinDirectory:dir inDomains:NSAllDomainsMask];
+}
+
+- (BOOL)addPath:(NSString *)relativePath withinDirectory:(NSSearchPathDirectory)dir inDomains:(NSSearchPathDomainMask)mask
+{
+	NSArray *paths;
+	NSEnumerator *en;
+	NSString *path;
+	
+	if(!perDomainPaths)
+	{
+		if(!(perDomainPaths = [[NSMutableArray alloc] init]))
+		{
+			return NO;
+		}
+	}
+	if((paths = NSSearchPathForDirectoriesInDomains(dir, mask, YES)))
+	{
+		en = [paths objectEnumerator];
+		while((path = [en nextObject]))
+		{
+			[(NSMutableArray *)perDomainPaths addObject:[path stringByAppendingPathComponent:relativePath]];
+		}
+		return YES;
+	}
+	return NO;
+}
+
+- (void)resetLocalPaths
+{
+	[localPaths release];
+	localPaths = [[NSMutableArray alloc] init];
+	[self addBuiltInPlugInsFolderWithinBundle:[NSBundle mainBundle]];
+}
+
+- (BOOL)addPath:(NSString *)relativePath withinBundleWithIdentifier:(NSString *)bundle
+{
+	NSBundle *bndl;
+	
+	if((bndl = [NSBundle bundleWithIdentifier:bundle]))
+	{
+		return [self addPath:relativePath withinBundle:bndl];
+	}
+	return NO;
+}
+
+- (BOOL)addPath:(NSString *)relativePath withinBundle:(NSBundle *)bundle
+{
+	NSString *path;
+	
+	if((path = [bundle bundlePath]))
+	{
+		[(NSMutableArray *) localPaths addObject:[path stringByAppendingPathComponent:relativePath]];
+		return YES;
+	}
+	return NO;
+}	
+
+- (BOOL)addBuiltInPlugInsFolderWithinBundleWithIdentifier:(NSString *)bundle
+{
+	NSBundle *bndl;
+	
+	if((bndl = [NSBundle bundleWithIdentifier:bundle]))
+	{
+		return [self addBuiltInPlugInsFolderWithinBundle:bndl];
+	}
+	return NO;
+}
+
+- (BOOL)addBuiltInPlugInsFolderWithinBundle:(NSBundle *)bundle
+{
+	NSString *path;
+	
+	if((path = [bundle builtInPlugInsPath]))
+	{
+		[(NSMutableArray *) localPaths addObject:path];
+		return YES;
+	}
+	return NO;
 }
 
 # if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_5 
@@ -240,47 +277,6 @@ NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugI
 @end
 
 @implementation NGPlugInLoader(NGPlugInLoaderInternalMethods)
-
-/* This will only be called if useDefaultSearchPaths is YES and searchPaths
- * is non-nil.
- */
-- (NSArray *)aggregatePaths
-{
-	if(defaultSearchPaths)
-	{
-		return [defaultSearchPaths arrayByAddingObjectsFromArray:searchPaths];
-	}
-	return searchPaths;
-}
-
-- (NSArray *)defaultSearchPaths
-{
-	NSEnumerator *en;
-	NSArray *libpaths;
-	NSMutableArray *paths;
-	NSString *dir;
-	
-	paths = [NSMutableArray array];
-	if(frameworkBundlePlugInsPath) [paths addObject:frameworkBundlePlugInsPath];
-	if(appBundlePlugInsPath) [paths addObject:appBundlePlugInsPath];
-	if(appPlugInsFolderPath || frameworkPlugInsFolderPath)
-	{
-		libpaths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSAllDomainsMask, YES);
-		en = [libpaths objectEnumerator];
-		while((dir = [en nextObject]))
-		{
-			if(appPlugInsFolderPath)
-			{
-				[paths addObject:[dir stringByAppendingPathComponent:appPlugInsFolderPath]];
-			}
-			if(frameworkPlugInsFolderPath)
-			{
-				[paths addObject:[dir stringByAppendingPathComponent:frameworkPlugInsFolderPath]];
-			}
-		}
-	}
-	return paths;
-}
 
 - (unsigned int)loadPlugInsAtPath:(NSString *)folderPath
 {
@@ -360,6 +356,19 @@ NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugI
 		[delegate plugInDidLoad:notification];
 	}
 	[[NSNotificationCenter defaultCenter] postNotification:notification];
+}
+
+- (BOOL)initialisePerDomainPaths
+{
+	if(perDomainPaths)
+	{
+		return YES;
+	}
+	if(!applicationName)
+	{
+		return NO;
+	}
+	return [self addPath:applicationName withinDirectory:NSApplicationSupportDirectory];
 }
 
 @end

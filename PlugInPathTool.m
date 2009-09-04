@@ -38,11 +38,14 @@ main(int argc, char **argv)
 	NGPlugInLoader *loader;
 	
 	loader = [[NGPlugInLoader alloc] init];
-	NSLog(@"%@", [loader searchPaths]);
+	NSLog(@"%@", [loader searchPath]);
+	
+	[loader resetDomainPaths];
 	[loader setApplicationName:@"PlugInPathTool"];
-	NSLog(@"%@", [loader searchPaths]);
-	[loader setFrameworkWithIdentifier:@"com.nexgenta.NGPlugInLoader"];
-	NSLog(@"%@", [loader searchPaths]);
+	NSLog(@"%@", [loader searchPath]);
+	
+	[loader addBuiltInPlugInsFolderWithinBundleWithIdentifier:@"com.nexgenta.NGPlugInLoader"];
+	NSLog(@"%@", [loader searchPath]);
 	[loader release];
 	
 	[pool drain];

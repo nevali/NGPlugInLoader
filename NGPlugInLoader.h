@@ -59,16 +59,12 @@
 
 @interface NGPlugInLoader : NSObject {
 	id delegate;
-	BOOL useDefaultSearchPaths;
 	NSString *applicationName;
-	NSString *frameworkIdentifier;
-	NSString *bundleExtension;
-	NSString *frameworkBundlePlugInsPath;
-	NSString *frameworkPlugInsFolderPath;
-	NSString *appBundlePlugInsPath;
-	NSString *appPlugInsFolderPath;
-	NSArray *searchPaths;
-	NSArray *defaultSearchPaths;
+	NSString *bundleExtension;	
+	NSString *mainBundlePlugInsPath;
+	NSArray *localPaths;
+	NSArray *perDomainPaths;
+	NSArray *extraPaths;
 }
 
 + (id)plugInLoader;
@@ -77,13 +73,20 @@
 - (id)init;
 - (id)initWithExtension:(NSString *)extension;
 
-- (NSArray *)searchPaths;
-- (void)addSearchPath:(NSString *)path;
-- (void)setSearchPaths:(NSArray *)paths;
-- (void)setSearchPaths:(NSArray *)paths replacingDefaults:(BOOL)replace;
+- (void)resetLocalPaths;
+- (BOOL)addPath:(NSString *)relativePath withinBundle:(NSBundle *)bundle;
+- (BOOL)addPath:(NSString *)relativePath withinBundleWithIdentifier:(NSString *)bundle;
+- (BOOL)addBuiltInPlugInsFolderWithinBundle:(NSBundle *)bundle;
+- (BOOL)addBuiltInPlugInsFolderWithinBundleWithIdentifier:(NSString *)bundle;
+
+- (void)resetDomainPaths;
 - (void)setApplicationName:(NSString *)appName;
-- (void)setFrameworkWithIdentifier:(NSString *)identifier;
-- (void)setFrameworkWithBundle:(NSBundle *)bundle;
+- (BOOL)addPath:(NSString *)relativePath withinDirectory:(NSSearchPathDirectory)dir;
+- (BOOL)addPath:(NSString *)relativePath withinDirectory:(NSSearchPathDirectory)dir inDomains:(NSSearchPathDomainMask)mask;
+
+- (void)setMainBundlePlugInsPath:(NSString *)path;
+
+- (NSArray *)searchPath;
 
 - (unsigned int)loadPlugIns;
 
