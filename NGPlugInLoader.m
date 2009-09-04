@@ -50,12 +50,7 @@
  * searchPath, loadPlugIns, or one of the addPath:withinDirectory:... methods is
  * setApplicationName: can be called to set the path, relative to NSApplicationSupportDirectory,
  * which -will- be used when one of these methods is invoked.
- *
- * If one of these methods has been invoked, resetDomainPaths may be called
- * to reset the per-domain path list to defaults. Note that calling
- * resetDomainPaths will (perhaps obviously) remove any paths which have
- * been added to the list.
- */
+*/
 
 NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugInLoader.notifications.PlugInDidLoad";
 
@@ -167,12 +162,6 @@ NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugI
 	return loaded;
 }
 
-- (void)resetDomainPaths
-{
-	[perDomainPaths release];
-	perDomainPaths = nil;
-}
-
 - (BOOL)addPath:(NSString *)relativePath withinDirectory:(NSSearchPathDirectory)dir
 {
 	return [self addPath:relativePath withinDirectory:dir inDomains:NSAllDomainsMask];
@@ -201,13 +190,6 @@ NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugI
 		return YES;
 	}
 	return NO;
-}
-
-- (void)resetLocalPaths
-{
-	[localPaths release];
-	localPaths = [[NSMutableArray alloc] init];
-	[self addBuiltInPlugInsFolderWithinBundle:[NSBundle mainBundle]];
 }
 
 - (BOOL)addPath:(NSString *)relativePath withinBundleWithIdentifier:(NSString *)bundle
@@ -254,6 +236,11 @@ NSString *const NGPlugInLoaderPlugInDidLoadNotification = @"com.nexgenta.NGPlugI
 		return YES;
 	}
 	return NO;
+}
+
+- (void)addPath:(NSString *)path
+{
+	[(NSMutableArray *) extraPaths addObject:path];
 }
 
 # if MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_X_VERSION_10_5 

@@ -73,17 +73,17 @@
 - (id)init;
 - (id)initWithExtension:(NSString *)extension;
 
-- (void)resetLocalPaths;
 - (BOOL)addPath:(NSString *)relativePath withinBundle:(NSBundle *)bundle;
 - (BOOL)addPath:(NSString *)relativePath withinBundleWithIdentifier:(NSString *)bundle;
 - (BOOL)addBuiltInPlugInsFolderWithinBundle:(NSBundle *)bundle;
 - (BOOL)addBuiltInPlugInsFolderWithinBundleWithIdentifier:(NSString *)bundle;
 
-- (void)resetDomainPaths;
-- (void)setApplicationName:(NSString *)appName;
 - (BOOL)addPath:(NSString *)relativePath withinDirectory:(NSSearchPathDirectory)dir;
 - (BOOL)addPath:(NSString *)relativePath withinDirectory:(NSSearchPathDirectory)dir inDomains:(NSSearchPathDomainMask)mask;
 
+- (void)addPath:(NSString *)path;
+
+- (void)setApplicationName:(NSString *)appName;
 - (void)setMainBundlePlugInsPath:(NSString *)path;
 
 - (NSArray *)searchPath;

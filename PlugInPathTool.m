@@ -39,13 +39,18 @@ main(int argc, char **argv)
 	
 	loader = [[NGPlugInLoader alloc] init];
 	NSLog(@"%@", [loader searchPath]);
+	[loader release];
 	
-	[loader resetDomainPaths];
+	loader = [[NGPlugInLoader alloc] init];	
 	[loader setApplicationName:@"PlugInPathTool"];
 	NSLog(@"%@", [loader searchPath]);
 	
 	[loader addBuiltInPlugInsFolderWithinBundleWithIdentifier:@"com.nexgenta.NGPlugInLoader"];
 	NSLog(@"%@", [loader searchPath]);
+	
+	[loader addPath:@"/Local/Library/Shared PlugIns"];
+	NSLog(@"%@", [loader searchPath]);
+	
 	[loader release];
 	
 	[pool drain];
